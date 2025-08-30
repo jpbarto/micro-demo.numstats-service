@@ -3,11 +3,17 @@ name: Build numstats-service
 on:
     push:
         paths:
-            - 'numstats-service/**'
+            - 'src/**'
+            - 'tests/**'
+            - 'Dockerfile'
+            - 'Makefile'
             - '.github/workflows/numstats-service.build.yaml'
     pull_request:
         paths:
-            - 'numstats-service/**'
+            - 'src/**'
+            - 'tests/**'
+            - 'Dockerfile'
+            - 'Makefile'
             - '.github/workflows/numstats-service.build.yaml'
 
 jobs:
@@ -20,54 +26,8 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
+            - name: Build image
+              run: make cicd.build
 
-            - name: Build and push
-              uses: docker/build-push-action@v6
-              with:
-                platforms: linux/amd64,linux/arm64
-                context: "{{defaultContext}}:numstats-service"
-                tags: numstats-service
-                outputs: type=oci,dest=${{ runner.temp }}/numstats-service-image.tar
-
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
-              with:
-                name: numstats-service-image
-                path: ${{ runner.temp }}/numstats-service-image.tar
-
-    test:
-      needs: build
-      runs-on: ubuntu-latest
-      steps:
-        - name: Download artifact
-          uses: actions/download-artifact@v4
-          with:
-            name: numstats-service-image
-            path: ${{ runner.temp }}
-        - name: Load Docker image
-          run: |
-            docker load --input ${{ runner.temp }}/numstats-service-image.tar
-
-        - name: Run container
-          run: |
-            docker run -d --name prime-service -p 8081:8080 ghcr.io/jpbarto/micro-demo/prime-service:latest
-            docker run -d --name fib-service -p 8082:8080 ghcr.io/jpbarto/micro-demo/fib-service:latest
-            docker run -d --name numstats-test -p 8080:8080 -e FIB_URL=http://localhost:8082 -e PRIME_URL=http://localhost:8081 numstats-service
-
-        - name: Wait for service to be ready
-          run: |
-            for i in {1..10}; do
-              curl -s http://localhost:8080/health && exit 0
-              sleep 5
-            done
-            echo "Service did not start in time"
-            exit 1
-
-        - name: Test service with curl
-          run: curl -v http://localhost:8080/numstats
-
-        - name: Stop container
-          if: always()
-          run: docker stop numstats-test
+            - name: Run unit tests
+              run: make cicd.test.unit
